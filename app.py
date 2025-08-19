@@ -10,6 +10,10 @@ from langdetect import detect
 from audio_recorder_streamlit import audio_recorder
 from openai import OpenAI
 from pydub import AudioSegment
+import imageio_ffmpeg as ioff
+
+AudioSegment.converter = ioff.get_ffmpeg_exe()
+AudioSegment.ffprobe = ioff.get_ffprobe_exe()  # optional but helpful
 
 # -----------------------------
 # 初期化
@@ -218,4 +222,5 @@ elif mode.startswith("会話"):
 # -----------------------------
 # Footer
 # -----------------------------
+
 st.caption("❤️ Streamlit + OpenAI で構築 · Xây dựng bằng Streamlit và OpenAI · FFmpeg 推奨 / Nên cài FFmpeg")
