@@ -1,26 +1,32 @@
 import io
 import os
-import time
 import tempfile
 from typing import Literal
 
 import streamlit as st
 from dotenv import load_dotenv
 from langdetect import detect
-from audiorecorder import audiorecorder  # <-- NEW widget
+from audiorecorder import audiorecorder  # streamlit-audiorecorder
 from openai import OpenAI
 from pydub import AudioSegment
 import imageio_ffmpeg as ioff
+import shutil
+import httpx
 
+# --- pydub / ffmpeg wiring ---
 AudioSegment.converter = ioff.get_ffmpeg_exe()
-try:
-    import shutil
-    ffprobe_path = shutil.which("ffprobe")
-    if ffprobe_path:
-        AudioSegment.ffprobe = ffprobe_path  # explicit path
-    # else: leave default ('ffprobe') and let PATH resolution handle it
-except Exception:
-    pass
+ffprobe_path = shutil.which("ffprobe")
+if ffprobe_path:
+    AudioSegment.ffprobe = ffprobe_path  # explicit path; else PATH will resolve
+
+# --- OpenAI client (proxy-safe) ---
+def make_openai_client() -> OpenAI:
+    # Will pick up HTTPS_PROXY / HTTP_PROXY / ALL_PROXY if set
+    proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or os.environ.get("ALL_PROXY")
+    if proxy:
+        httpx_client = httpx.Client(proxies=proxy, timeout=60.0)
+        return OpenAI(http_client=httpx_client)
+    return OpenAI()
 
 # -----------------------------
 # 初期化
@@ -29,7 +35,7 @@ load_dotenv()
 if "OPENAI_API_KEY" not in os.environ or not os.environ["OPENAI_API_KEY"].strip():
     st.warning("OPENAI_API_KEY が設定されていません。 .env に追加してください。")
 
-client = OpenAI()
+client = make_openai_client()
 
 APP_TITLE = "🇻🇳⇄🇯🇵 ベトナム語 ⇄ 日本語 翻訳 (テキスト + 音声)"
 STT_MODEL = "gpt-4o-mini-transcribe"     # 音声→テキスト
@@ -39,6 +45,9 @@ LLM_MODEL = "gpt-4o-mini"                # 翻訳
 st.set_page_config(page_title=APP_TITLE, page_icon="🌏", layout="centered")
 st.title(APP_TITLE)
 st.caption("テキスト翻訳、マイク入力、音声会話。Streamlit + OpenAI で構築。")
+
+# Optional quick debug
+st.caption(f"Python runtime: {os.sys.version.split()[0]}")
 
 # -----------------------------
 # ヘルパー関数
@@ -231,6 +240,3 @@ elif mode.startswith("会話"):
 # Footer
 # -----------------------------
 st.caption("❤️ Streamlit + OpenAI で構築 · Xây dựng bằng Streamlit và OpenAI · FFmpeg 推奨 / Nên cài FFmpeg")
-
-
-
