@@ -7,11 +7,12 @@ from typing import Literal
 import streamlit as st
 from dotenv import load_dotenv
 from langdetect import detect
-from audio_recorder_streamlit import audio_recorder
+from audiorecorder import audiorecorder  # <-- NEW widget
 from openai import OpenAI
 from pydub import AudioSegment
 import imageio_ffmpeg as ioff
 
+# Make pydub find ffmpeg without system packages
 AudioSegment.converter = ioff.get_ffmpeg_exe()
 AudioSegment.ffprobe = ioff.get_ffprobe_exe()  # optional but helpful
 
@@ -26,8 +27,8 @@ client = OpenAI()
 
 APP_TITLE = "🇻🇳⇄🇯🇵 ベトナム語 ⇄ 日本語 翻訳 (テキスト + 音声)"
 STT_MODEL = "gpt-4o-mini-transcribe"     # 音声→テキスト
-TTS_MODEL = "gpt-4o-mini-tts"             # テキスト→音声
-LLM_MODEL = "gpt-4o-mini"                 # 翻訳
+TTS_MODEL = "gpt-4o-mini-tts"            # テキスト→音声
+LLM_MODEL = "gpt-4o-mini"                # 翻訳
 
 st.set_page_config(page_title=APP_TITLE, page_icon="🌏", layout="centered")
 st.title(APP_TITLE)
@@ -36,7 +37,6 @@ st.caption("テキスト翻訳、マイク入力、音声会話。Streamlit + Op
 # -----------------------------
 # ヘルパー関数
 # -----------------------------
-
 def detect_lang_simple(text: str) -> str:
     """ベトナム語/日本語の簡易判定"""
     if any("぀" <= ch <= "ヿ" or "一" <= ch <= "鿿" for ch in text):
@@ -53,26 +53,21 @@ def detect_lang_simple(text: str) -> str:
 def translate_text(text: str, src: str, dst: str) -> str:
     if src == "auto":
         detected = detect_lang_simple(text)
-        if detected in ("vi", "ja"):
-            src = detected
-        else:
-            src = "vi"  # default fallback
+        src = detected if detected in ("vi", "ja") else "vi"
     if src == dst:
         return text
 
     system_prompt = (
         "あなたはプロの翻訳者です。文章を簡潔かつ自然に翻訳してください。"
-        "- ソース言語: 'vi'=ベトナム語, 'ja'=日本語"
-        "- ターゲット言語: 'ja'=日本語, 'vi'=ベトナム語"
-        "- 数字や名前はそのまま保持"
+        "- ソース言語: 'vi'=ベトナム語, 'ja'=日本語\n"
+        "- ターゲット言語: 'ja'=日本語, 'vi'=ベトナム語\n"
+        "- 数字や名前はそのまま保持\n"
         "- 説明は追加せず翻訳文のみ出力"
     )
-
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": f"[SRC={src}] [DST={dst}]\n{text}"},
     ]
-
     try:
         resp = client.chat.completions.create(
             model=LLM_MODEL,
@@ -103,30 +98,37 @@ def transcribe_bytes(wav_bytes: bytes, lang_hint: str = "auto") -> str:
 
 
 def speak(text: str, voice: str = "alloy", fmt: str = "mp3"):
-    """TTS（format 引数なし）。必要ならローカルで MP3→WAV 変換。戻り値は (bytes, mime)。"""
+    """TTS（format引数なし）。必要ならローカルで MP3→WAV 変換。戻り値は (bytes, mime)。"""
     if not text.strip():
         return b"", "audio/mp3"
-
-    # 新SDKでは format= は使わない
     resp = client.audio.speech.create(
         model=TTS_MODEL,
         voice=voice,
         input=text,
     )
     raw = resp.read()  # bytes（デフォルトは MP3 データ）
-
     if fmt == "mp3":
         return raw, "audio/mp3"
-
-    # WAV が選択された場合はローカル変換
     try:
         seg = AudioSegment.from_file(io.BytesIO(raw), format="mp3")
         buf = io.BytesIO()
         seg.export(buf, format="wav")
         return buf.getvalue(), "audio/wav"
     except Exception:
-        # 変換失敗時は MP3 を返す
         return raw, "audio/mp3"
+
+
+def record_wav_bytes(button_text: str, recording_text: str) -> bytes | None:
+    """
+    Uses streamlit-audiorecorder to capture audio and return WAV bytes.
+    Returns None if nothing was recorded.
+    """
+    audio = audiorecorder(button_text, recording_text)  # returns pydub.AudioSegment
+    if len(audio) > 0:
+        buf = io.BytesIO()
+        audio.export(buf, format="wav")
+        return buf.getvalue()
+    return None
 
 # -----------------------------
 # UI サイドバー
@@ -172,7 +174,7 @@ elif mode.startswith("音声入力"):
     st.subheader("🎤 音声入力翻訳 / Dịch giọng nói")
     st.caption("クリックして録音 / Nhấn để ghi âm")
 
-    wav_bytes = audio_recorder(text="録音 / Ghi âm", recording_color="#e53935", neutral_color="#6c757d", icon_size="2x")
+    wav_bytes = record_wav_bytes("録音 / Ghi âm", "録音中... / Đang ghi...")
     if wav_bytes:
         st.info("録音完了 / Đã ghi âm. テキスト化中... / Đang nhận dạng...")
         transcript = transcribe_bytes(wav_bytes, src_choice if src_choice != "auto" else "auto")
@@ -195,7 +197,7 @@ elif mode.startswith("会話"):
     if "chat" not in st.session_state:
         st.session_state.chat = []
 
-    wav_bytes = audio_recorder(text="話す / Nói", recording_color="#1e88e5", neutral_color="#6c757d", icon_size="2x")
+    wav_bytes = record_wav_bytes("話す / Nói", "録音中... / Đang ghi...")
     if wav_bytes:
         transcript = transcribe_bytes(wav_bytes, "auto")
         detected = detect_lang_simple(transcript)
@@ -222,5 +224,4 @@ elif mode.startswith("会話"):
 # -----------------------------
 # Footer
 # -----------------------------
-
 st.caption("❤️ Streamlit + OpenAI で構築 · Xây dựng bằng Streamlit và OpenAI · FFmpeg 推奨 / Nên cài FFmpeg")
