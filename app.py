@@ -12,9 +12,15 @@ from openai import OpenAI
 from pydub import AudioSegment
 import imageio_ffmpeg as ioff
 
-# Make pydub find ffmpeg without system packages
 AudioSegment.converter = ioff.get_ffmpeg_exe()
-AudioSegment.ffprobe = ioff.get_ffprobe_exe()  # optional but helpful
+try:
+    import shutil
+    ffprobe_path = shutil.which("ffprobe")
+    if ffprobe_path:
+        AudioSegment.ffprobe = ffprobe_path  # explicit path
+    # else: leave default ('ffprobe') and let PATH resolution handle it
+except Exception:
+    pass
 
 # -----------------------------
 # 初期化
@@ -225,5 +231,6 @@ elif mode.startswith("会話"):
 # Footer
 # -----------------------------
 st.caption("❤️ Streamlit + OpenAI で構築 · Xây dựng bằng Streamlit và OpenAI · FFmpeg 推奨 / Nên cài FFmpeg")
+
 
 
