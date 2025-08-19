@@ -20,7 +20,13 @@ if ffprobe_path:
     AudioSegment.ffprobe = ffprobe_path  # else PATH will resolve 'ffprobe'
 
 from openai import OpenAI
-client = OpenAI()   # ← no proxies, no custom httpx client
+
+def make_openai_client():
+    # uses OPENAI_API_KEY from env by default
+    return OpenAI()
+
+client = make_openai_client()
+
 
 # -----------------------------
 # 初期化
@@ -220,4 +226,5 @@ elif mode.startswith("会話"):
 # Footer
 # -----------------------------
 st.caption("❤️ Streamlit + OpenAI で構築 · Xây dựng bằng Streamlit và OpenAI · FFmpeg 推奨 / Nên cài FFmpeg")
+
 
