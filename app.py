@@ -17,13 +17,14 @@ import httpx
 AudioSegment.converter = ioff.get_ffmpeg_exe()
 ffprobe_path = shutil.which("ffprobe")
 if ffprobe_path:
-    AudioSegment.ffprobe = ffprobe_path  # explicit path; else PATH will resolve
+    AudioSegment.ffprobe = ffprobe_path  # else PATH will resolve 'ffprobe'
 
-# --- OpenAI client (proxy-safe) ---
+# --- OpenAI client (proxy-safe: NO 'proxies=' kwarg on OpenAI) ---
 def make_openai_client() -> OpenAI:
-    # Will pick up HTTPS_PROXY / HTTP_PROXY / ALL_PROXY if set
+    # use env proxies if present
     proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or os.environ.get("ALL_PROXY")
     if proxy:
+        # configure proxy at the HTTP layer
         httpx_client = httpx.Client(proxies=proxy, timeout=60.0)
         return OpenAI(http_client=httpx_client)
     return OpenAI()
@@ -38,22 +39,18 @@ if "OPENAI_API_KEY" not in os.environ or not os.environ["OPENAI_API_KEY"].strip(
 client = make_openai_client()
 
 APP_TITLE = "🇻🇳⇄🇯🇵 ベトナム語 ⇄ 日本語 翻訳 (テキスト + 音声)"
-STT_MODEL = "gpt-4o-mini-transcribe"     # 音声→テキスト
-TTS_MODEL = "gpt-4o-mini-tts"            # テキスト→音声
-LLM_MODEL = "gpt-4o-mini"                # 翻訳
+STT_MODEL = "gpt-4o-mini-transcribe"
+TTS_MODEL = "gpt-4o-mini-tts"
+LLM_MODEL = "gpt-4o-mini"
 
 st.set_page_config(page_title=APP_TITLE, page_icon="🌏", layout="centered")
 st.title(APP_TITLE)
 st.caption("テキスト翻訳、マイク入力、音声会話。Streamlit + OpenAI で構築。")
 
-# Optional quick debug
-st.caption(f"Python runtime: {os.sys.version.split()[0]}")
-
 # -----------------------------
 # ヘルパー関数
 # -----------------------------
 def detect_lang_simple(text: str) -> str:
-    """ベトナム語/日本語の簡易判定"""
     if any("぀" <= ch <= "ヿ" or "一" <= ch <= "鿿" for ch in text):
         return "ja"
     try:
@@ -64,14 +61,12 @@ def detect_lang_simple(text: str) -> str:
         pass
     return "vi" if all(ord(c) < 128 for c in text) else "ja"
 
-
 def translate_text(text: str, src: str, dst: str) -> str:
     if src == "auto":
         detected = detect_lang_simple(text)
         src = detected if detected in ("vi", "ja") else "vi"
     if src == dst:
         return text
-
     system_prompt = (
         "あなたはプロの翻訳者です。文章を簡潔かつ自然に翻訳してください。"
         "- ソース言語: 'vi'=ベトナム語, 'ja'=日本語\n"
@@ -86,13 +81,12 @@ def translate_text(text: str, src: str, dst: str) -> str:
     try:
         resp = client.chat.completions.create(
             model=LLM_MODEL,
-            messages=messages,  # type: ignore
+            messages=messages,
             temperature=0.2,
         )
         return resp.choices[0].message.content.strip() if resp.choices[0].message.content else "Translation failed"
     except Exception as e:
         return f"Translation error: {str(e)}"
-
 
 def transcribe_bytes(wav_bytes: bytes, lang_hint: str = "auto") -> str:
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
@@ -111,9 +105,7 @@ def transcribe_bytes(wav_bytes: bytes, lang_hint: str = "auto") -> str:
         except OSError:
             pass
 
-
 def speak(text: str, voice: str = "alloy", fmt: str = "mp3"):
-    """TTS（format引数なし）。必要ならローカルで MP3→WAV 変換。戻り値は (bytes, mime)。"""
     if not text.strip():
         return b"", "audio/mp3"
     resp = client.audio.speech.create(
@@ -121,7 +113,7 @@ def speak(text: str, voice: str = "alloy", fmt: str = "mp3"):
         voice=voice,
         input=text,
     )
-    raw = resp.read()  # bytes（デフォルトは MP3 データ）
+    raw = resp.read()
     if fmt == "mp3":
         return raw, "audio/mp3"
     try:
@@ -132,13 +124,8 @@ def speak(text: str, voice: str = "alloy", fmt: str = "mp3"):
     except Exception:
         return raw, "audio/mp3"
 
-
 def record_wav_bytes(button_text: str, recording_text: str) -> bytes | None:
-    """
-    Uses streamlit-audiorecorder to capture audio and return WAV bytes.
-    Returns None if nothing was recorded.
-    """
-    audio = audiorecorder(button_text, recording_text)  # returns pydub.AudioSegment
+    audio = audiorecorder(button_text, recording_text)  # pydub.AudioSegment
     if len(audio) > 0:
         buf = io.BytesIO()
         audio.export(buf, format="wav")
@@ -166,7 +153,7 @@ with st.sidebar:
     audio_format = st.selectbox("音声形式 / Định dạng", ["mp3", "wav"], index=0) or "mp3"
 
 # -----------------------------
-# 各モード (UI 表示も日越併記)
+# 各モード
 # -----------------------------
 if mode.startswith("テキスト"):
     st.subheader("📝 テキスト翻訳 / Dịch văn bản")
