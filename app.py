@@ -19,15 +19,8 @@ ffprobe_path = shutil.which("ffprobe")
 if ffprobe_path:
     AudioSegment.ffprobe = ffprobe_path  # else PATH will resolve 'ffprobe'
 
-# --- OpenAI client (proxy-safe: NO 'proxies=' kwarg on OpenAI) ---
-def make_openai_client() -> OpenAI:
-    # use env proxies if present
-    proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or os.environ.get("ALL_PROXY")
-    if proxy:
-        # configure proxy at the HTTP layer
-        httpx_client = httpx.Client(proxies=proxy, timeout=60.0)
-        return OpenAI(http_client=httpx_client)
-    return OpenAI()
+from openai import OpenAI
+client = OpenAI()   # ← no proxies, no custom httpx client
 
 # -----------------------------
 # 初期化
@@ -227,3 +220,4 @@ elif mode.startswith("会話"):
 # Footer
 # -----------------------------
 st.caption("❤️ Streamlit + OpenAI で構築 · Xây dựng bằng Streamlit và OpenAI · FFmpeg 推奨 / Nên cài FFmpeg")
+
