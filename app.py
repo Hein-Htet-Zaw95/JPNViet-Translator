@@ -1,11 +1,3 @@
-import pkg_resources, sys, streamlit as st
-
-for dist in pkg_resources.working_set:
-    if "recorder" in dist.project_name.lower():
-        st.caption(f"Recorder package loaded: {dist.project_name} {dist.version}")
-
-st.caption(f"Python version: {sys.version}")
-
 import io
 import os
 import time
@@ -233,4 +225,5 @@ elif mode.startswith("会話"):
 # Footer
 # -----------------------------
 st.caption("❤️ Streamlit + OpenAI で構築 · Xây dựng bằng Streamlit và OpenAI · FFmpeg 推奨 / Nên cài FFmpeg")
+
 
